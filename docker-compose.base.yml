@@ -13,7 +13,7 @@ services:
 
   wis2box-ui:
     container_name: wis2box-ui
-    image: ghcr.io/wmo-im/wis2box-ui:latest
+    image: wmoim/wis2box-ui:latest
     restart: always
     env_file:
       - wis2box.env
@@ -22,14 +22,14 @@ services:
 
   wis2box-webapp:
     container_name: wis2box-webapp
-    image: ghcr.io/wmo-im/wis2box-webapp:latest
+    image: wmoim/wis2box-webapp:latest
     env_file:
       - wis2box.env
     restart: always
 
   wis2box-api:
     container_name: wis2box-api
-    image: ghcr.io/wmo-im/wis2box-api:latest
+    image: wmoim/wis2box-api:latest
     restart: always
     env_file:
       - wis2box.env
@@ -104,10 +104,8 @@ services:
 
   mosquitto:
     container_name: mosquitto
-    #image: ghcr.io/wmo-im/wis2box-broker:latest
+    image: wmoim/wis2box-broker:local
     restart: always
-    build:
-      context: ./wis2box-broker
     env_file:
       - wis2box.env
     volumes:
@@ -115,13 +113,10 @@ services:
 
   wis2box-management:
     container_name: wis2box-management
+    image: wmoim/wis2box-management:local
     mem_limit: 1g
     memswap_limit: 1g
     restart: always
-    #image: ghcr.io/wmo-im/wis2box-management:latest
-    build:
-      context: ./wis2box-management
-    #user: wis2box:wis2box
     env_file:
       - wis2box.env
     volumes:
@@ -134,9 +129,22 @@ services:
         condition: service_healthy
     command: ["wis2box", "pubsub" , "subscribe"]
 
+  # mqtt_metrics_collector, listens to mqtt-broker
+  mqtt_metrics_collector:
+    container_name: mqtt_metrics_collector
+    restart: unless-stopped
+    env_file:
+      - wis2box.env
+    image: wmoim/wis2box-mqtt-metrics-collector:local
+    depends_on:
+      - mosquitto
+      - wis2box-management
+    ports:
+      - 8001:8001
+
   wis2box-auth:
     container_name: wis2box-auth
-    image: ghcr.io/wmo-im/wis2box-auth:latest
+    image: wmoim/wis2box-auth:latest
     restart: always
     env_file:
       - wis2box.env
@@ -147,7 +155,7 @@ services:
 
   wis2downloader:
     container_name: wis2downloader
-    image: ghcr.io/wmo-im/wis2downloader:v0.3.2
+    image: wmoim/wis2downloader:latest
     restart: always
     env_file:
       - wis2box.env

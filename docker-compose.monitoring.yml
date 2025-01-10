@@ -34,22 +34,6 @@ services:
       vpcbr: # this is the place where we assign the static ipv4 address
         ipv4_address: 10.5.0.2
       default:
-
-  # mqtt_metrics_collector, listens to mqtt-broker
-  mqtt_metrics_collector:
-    <<: *logging
-    container_name: mqtt_metrics_collector
-    restart: unless-stopped
-    env_file:
-      - wis2box.env
-    #image: ghcr.io/wmo-im/wis2box-mqtt-metrics-collector:latest
-    build:
-      context: ./wis2box-mqtt-metrics-collector
-    depends_on:
-      - mosquitto
-      - wis2box-management
-    ports:
-      - 8001:8001
     
   # prometheus to collect metrics
   prometheus:
@@ -128,6 +112,8 @@ services:
   wis2box-api:
     <<: *logging
   wis2box-auth:
+    <<: *logging
+  mqtt_metrics_collector:
     <<: *logging
   minio:
     <<: *logging

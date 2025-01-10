@@ -22,7 +22,10 @@
 
 import argparse
 import os
+import re
+import requests
 import subprocess
+
 
 if subprocess.call(['docker', 'compose'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) > 0:
     DOCKER_COMPOSE_COMMAND = 'docker-compose'
@@ -92,6 +95,99 @@ parser.add_argument('args', nargs=argparse.REMAINDER)
 
 args = parser.parse_args()
 
+# define ENUM for docker image usage, LATEST or LOCAL
+LOCAL = 0
+LATEST = 1
+
+LOCAL_IMAGES = [
+    'wis2box-management',
+    'wis2box-broker',
+    'wis2box-mqtt-metrics-collector'
+]
+
+def build_local_images() -> None:
+    """
+    Build local images
+
+    :returns: None.
+    """
+    for image in LOCAL_IMAGES:
+        print(f'Building {image}')
+        run(split(f'docker build -t wmoim/{image}:local {image}'))
+
+    return None
+
+def get_latest_image_tag(image: str) -> str:
+    """
+    list image tags by querying docker hub api
+    skip the 'latest' tag
+    return the most recent tag
+
+    :param image: required, string. Name of the image.
+
+    :returns: string. The most recent tag.
+    """
+
+    url = f"https://hub.docker.com/v2/repositories/wmoim/{image}/tags/"
+    tags = []
+    try:
+        # Paginate through results to collect all tags
+        while url:
+            response = requests.get(url)
+            response.raise_for_status()  # Raise an error for HTTP failures
+            data = response.json()
+            tags.extend([
+                tag['name'] for tag in data.get('results', [])
+                if tag['name'] != 'latest'  # Skip 'latest' tag
+            ])
+            url = data.get('next')  # Get the next page URL
+    except requests.RequestException as e:
+        raise RuntimeError(f"Failed to fetch tags for image '{image}': {e}")
+
+    if not tags:
+        raise ValueError(f"No valid tags found for image '{image}'")
+    else:
+        print(f"Found {len(tags)} tags for image '{image}: {tags}'")
+
+    # define a function to sort tags by version number
+    def tag_sort_key(tag):
+        # Extract numeric and non-numeric parts
+        parts = re.split(r'(\d+)', tag)  # Split into numeric and non-numeric segments
+        return [
+            int(part) if part.isdigit() else 'ZZZZZZZZZZ'  # Use a large number for non-numeric parts
+            for part in parts
+        ]
+
+    # Sort tags by version number in descending order
+    tags.sort(key=tag_sort_key, reverse=True)
+    return tags[0]
+    
+
+def update_docker_images(image_type: int) -> None:
+    """
+    Write docker-compose.yml using docker-compose.base.yml as base
+    and set image-versions based on the latest available images in wmoim
+
+    image_type: int. LATEST or LOCAL
+
+    :returns: None.
+    """
+    
+    with open('docker-compose.base.yml', 'r') as f:
+        lines = f.readlines()
+    
+        with open('docker-compose.yml', 'w') as f:
+            for line in lines:
+                if 'image: wmoim/' in line and image_type == LATEST:
+                    image = line.split('wmoim/')[1].split(':')[0]
+                    print(f'Get latest image tag for {image}')
+                    tag = get_latest_image_tag(image)
+                    print(f'Set {image} to {tag}')
+                    f.write(f'    image: wmoim/{image}:{tag}\n')
+                else:
+                    f.write(line)
+
+        return None
 
 def split(value: str) -> list:
     """
@@ -169,8 +265,8 @@ def make(args) -> None:
     if args.command == "config":
         run(split(f'{DOCKER_COMPOSE_COMMAND} {docker_compose_args} config'))
     elif args.command == "build":
-        run(split(
-            f'{DOCKER_COMPOSE_COMMAND} {docker_compose_args} build {containers}'))
+        build_local_images()
+        update_docker_images(LOCAL)
     elif args.command in ["up", "start", "start-dev"]:
         run(split(
             'docker plugin install grafana/loki-docker-driver:latest --alias loki --grant-all-permissions'),
@@ -199,7 +295,15 @@ def make(args) -> None:
             run(split(
                 f'{DOCKER_COMPOSE_COMMAND} {docker_compose_args} down --remove-orphans {containers}'))
     elif args.command == "update":
-        run(split(f'{DOCKER_COMPOSE_COMMAND} {docker_compose_args} pull'))
+        update_docker_images(LATEST)
+        # restart all containers
+        run(split(
+                f'{DOCKER_COMPOSE_COMMAND} {docker_compose_args} down --remove-orphans'))
+        run(split(
+                f'{DOCKER_COMPOSE_COMMAND} {docker_compose_args} up -d'))
+        # prune dangling images
+        _ = run(split('docker images --filter dangling=true -q --no-trunc'))
+        run(split(f'docker rmi {_}'))
     elif args.command == "prune":
         run(split('docker builder prune -f'))
         run(split('docker container prune -f'))

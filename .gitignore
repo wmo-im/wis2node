@@ -45,3 +45,7 @@ wis2box.env
 docker/.env
 
 .ipynb_checkpoints
+tests/data/.ssh/id_rsa
+tests/data/.ssh/id_rsa.pub
+
+docker-compose.yml

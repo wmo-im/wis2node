@@ -268,6 +268,9 @@ def make(args) -> None:
         build_local_images()
         update_docker_images(LOCAL)
     elif args.command in ["up", "start", "start-dev"]:
+        # if docker-compose.yml does not exist, run update to create it
+        if not os.path.exists('docker-compose.yml'):
+            update_docker_images(LATEST)
         run(split(
             'docker plugin install grafana/loki-docker-driver:latest --alias loki --grant-all-permissions'),
             silence_stderr=True)
